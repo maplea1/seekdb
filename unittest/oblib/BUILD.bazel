@@ -39,3 +39,13 @@ cc_test(
     linkstatic = True,
     deps = [":jemalloc_hook_cases", "//src/oblib:oblib_test_runtime"],
 )
+cc_test(
+    name = "test_uuid_node_random",
+    srcs = ["test_uuid_node_random.cpp"],
+    linkstatic = True,
+    deps = [
+        "//bazel/third_party:gtest",
+        "//src/oblib:oblib_test_runtime",
+        "//src/oblib:oblib_unit_test_internal_headers",
+    ],
+)
