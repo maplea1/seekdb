@@ -59,6 +59,30 @@ private:
   ObFatalErrExtraInfoGuard *last_;
 };
 
+
+using UuidNodeRandomFiller = int (*)(unsigned char *buf, const int64_t len);
+
+// Fill an RFC 9562 UUIDv1 node from a cryptographic random source.  The
+// multicast bit marks the node as synthetic so it cannot collide with a real
+// IEEE 802 address.  node is left untouched unless all six bytes were obtained.
+inline int fill_random_uuid_node(
+    unsigned char *node,
+    const int64_t node_len,
+    UuidNodeRandomFiller filler)
+{
+  int ret = OB_SUCCESS;
+  unsigned char random_node[6] = {0};
+  if (OB_ISNULL(node) || 6 != node_len || OB_ISNULL(filler)) {
+    ret = OB_INVALID_ARGUMENT;
+  } else if (1 != filler(random_node, static_cast<int64_t>(sizeof(random_node)))) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    random_node[0] |= 0x01;
+    MEMCPY(node, random_node, sizeof(random_node));
+  }
+  return ret;
+}
+
 inline int64_t get_cur_ts()
 {
   return OB_TSC_TIMESTAMP.fast_current_time();
