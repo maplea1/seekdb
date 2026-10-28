@@ -39,7 +39,9 @@
 #endif
 #include "sql/engine/expr/ob_expr_uuid.h"
 #include "sql/engine/ob_exec_context.h"
+#include <openssl/rand.h>
 #include "lib/time/ob_time_utility.h"
+#include "lib/utility/ob_common_utility.h"
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
 
@@ -73,6 +75,16 @@ int ObBigEndian::put_uint32(unsigned char *b, uint32_t v)
     b[3] = static_cast<unsigned char>(v);
   }
   return ret;
+}
+
+int ObUUIDNode::init_random_mac_addr()
+{
+  return fill_random_uuid_node(
+      mac_addr_,
+      static_cast<int64_t>(sizeof(mac_addr_)),
+      [](unsigned char *buf, const int64_t len) -> int {
+        return RAND_bytes(buf, static_cast<int>(len));
+      });
 }
 
 ObUUIDNode::ObUUIDNode()
@@ -205,13 +217,29 @@ int ObUUIDNode::init()
   char buf[1024];
   int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
   if (sock == -1) {
-    ret = OB_ERR_UNEXPECTED;
-    LOG_ERROR("socket failed", K(ret), K(errno));
+    const int discovery_errno = errno;
+    const int discovery_ret = OB_ERR_UNEXPECTED;
+    ret = init_random_mac_addr();
+    if (OB_SUCC(ret)) {
+      LOG_WARN("socket failed; using random UUID node", K(discovery_ret), K(discovery_errno));
+    } else {
+      LOG_WARN("socket and random UUID node initialization failed",
+          K(discovery_ret), K(discovery_errno), K(ret));
+    }
   } else {
     ifc.ifc_len = sizeof(buf);
     ifc.ifc_buf = buf;
     if (ioctl(sock, SIOCGIFCONF, &ifc) < 0) {
-      ret = OB_ERR_UNEXPECTED;
+      const int discovery_errno = errno;
+      const int discovery_ret = OB_ERR_UNEXPECTED;
+      ret = init_random_mac_addr();
+      if (OB_SUCC(ret)) {
+        LOG_WARN("SIOCGIFCONF failed; using random UUID node",
+            K(discovery_ret), K(discovery_errno));
+      } else {
+        LOG_WARN("SIOCGIFCONF and random UUID node initialization failed",
+            K(discovery_ret), K(discovery_errno), K(ret));
+      }
     } else {
       ifreq *it = ifc.ifc_req;
       ifreq *end = it + (ifc.ifc_len / sizeof(ifreq));
@@ -238,7 +266,16 @@ int ObUUIDNode::init()
       }//end for
       if (OB_FAIL(ret)) {
       } else if (!mac_addr_found) {
-        ret = OB_ERR_UNEXPECTED;
+        const int discovery_errno = 0;
+        const int discovery_ret = OB_ERR_UNEXPECTED;
+        ret = init_random_mac_addr();
+        if (OB_SUCC(ret)) {
+          LOG_WARN("no usable MAC address; using random UUID node",
+              K(discovery_ret), K(discovery_errno));
+        } else {
+          LOG_WARN("no usable MAC address and random UUID node initialization failed",
+              K(discovery_ret), K(discovery_errno), K(ret));
+        }
       } else {
         is_inited_ = true;
       }
